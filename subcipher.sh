@@ -3,7 +3,7 @@
 # Nom du script: SubCipher
 # Auteur: Simon Bédard
 # Date: 2025-02-09
-# Description: Script pour gérer des volumes chiffrés avec LUKS en utilisant des clés publiques/privées et une clé Maître.
+# Description: Script pour gérer des conteneurs/volumes chiffrés avec LUKS en utilisant des clés publiques/privées et une clé Maître.
 
 # Configuration des options Bash
 set -e
