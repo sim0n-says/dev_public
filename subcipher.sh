@@ -17,7 +17,6 @@ KEYS_DIR="$HOME/.secrets"
 LOG_FILE="$HOME/red_october.log"
 CONTAINER_NAME=""
 CONTAINER_PATH=""
-MASTER_KEY_PASSPHRASE_FILE="$HOME/.secrets/master/master_key_passphrase.txt"
 
 # Fonction pour journaliser les messages
 log_message() {
@@ -84,7 +83,7 @@ add_luks_key() {
         exit 1
     fi
 
-    sudo cryptsetup luksAddKey "$path/$name" --key-file "$key" < "$new_key_file"
+    sudo cryptsetup luksAddKey --key-file="$key" "$path/$name" "$new_key_file"
     if [ $? -ne 0 ]; then
         log_message "Erreur : Impossible d'ajouter la clé au volume LUKS à $path/$name."
         exit 1
@@ -218,8 +217,9 @@ create_key_pair() {
 # Fonction pour créer une clé maître
 create_master_key() {
     local master_keys_dir="$KEYS_DIR/master"
+    mkdir -p "$master_keys_dir/priv" "$master_keys_dir/pub"
 
-    if [ -f "$master_keys_dir/cle_maitre.pem" ]; then
+    if [ -f "$master_keys_dir/priv/cle_maitre.pem" ]; then
         read -p "La clé maître existe déjà. Voulez-vous la remplacer ? (yes/no) : " RESPONSE
         while [[ -z "$RESPONSE" || ( "$RESPONSE" != "yes" && "$RESPONSE" != "no" ) ]]; do
             read -p "La clé maître existe déjà. Voulez-vous la remplacer ? (yes/no) : " RESPONSE
@@ -229,9 +229,15 @@ create_master_key() {
             return
         fi
     fi
-
-    openssl genpkey -algorithm RSA -out "$master_keys_dir/cle_maitre.pem" -pkeyopt rsa_keygen_bits:2048
-    log_message "Clé maître créée à $master_keys_dir/cle_maitre.pem."
+    
+    # Créer la paire de clés maître sans passphrase
+    openssl genpkey -algorithm RSA -out "$master_keys_dir/priv/cle_maitre.pem" -pkeyopt rsa_keygen_bits:4096
+    openssl rsa -pubout -in "$master_keys_dir/priv/cle_maitre.pem" -out "$master_keys_dir/pub/cle_maitre_pub.pem"
+    
+    chmod 600 "$master_keys_dir/priv/cle_maitre.pem"
+    chmod 644 "$master_keys_dir/pub/cle_maitre_pub.pem"
+    
+    log_message "Paire de clés maître créée dans $master_keys_dir"
 }
 
 # Fonction pour chiffrer un volume avec la clé publique
@@ -273,8 +279,34 @@ decrypt_master() {
 open_master() {
     read -p "Nom du fichier conteneur : " CONTAINER_NAME
     CONTAINER_PATH="$HOME/$CONTAINER_NAME"
-    SELECTED_KEY="$KEYS_DIR/master/cle_maitre.pem"
-    open_luks "$HOME" "$CONTAINER_NAME" "$SELECTED_KEY"
+    MASTER_KEY="$KEYS_DIR/master/priv/cle_maitre.pem"
+    
+    # Vérifier si la clé maître existe
+    if [ ! -f "$MASTER_KEY" ]; then
+        log_message "Erreur : La clé maître n'existe pas à $MASTER_KEY"
+        exit 1
+    fi
+    
+    if [ -z "$MAPPER_NAME" ]; then
+        MAPPER_NAME="${CONTAINER_NAME}_mapper"
+    fi
+
+    # Fermer le mapper s'il existe déjà
+    if sudo cryptsetup status "$MAPPER_NAME" &>/dev/null; then
+        log_message "Le périphérique $MAPPER_NAME existe déjà. Fermeture du périphérique."
+        sudo cryptsetup luksClose "$MAPPER_NAME"
+    fi
+
+    # Utiliser directement la clé maître
+    sudo cryptsetup luksOpen "$HOME/$CONTAINER_NAME" "$MAPPER_NAME" --key-file "$MASTER_KEY"
+    local STATUS=$?
+    
+    if [ $STATUS -ne 0 ]; then
+        log_message "Erreur : Impossible d'ouvrir le volume avec la clé maître"
+        exit 1
+    fi
+    
+    log_message "Volume ouvert avec la clé maître"
     mount_luks "$MAPPER_NAME" "/mnt/$CONTAINER_NAME"
 }
 
@@ -283,30 +315,30 @@ apply_new_master() {
     read -p "Nom du fichier conteneur : " CONTAINER_NAME
     CONTAINER_PATH="$HOME/$CONTAINER_NAME"
     local master_keys_dir="$KEYS_DIR/master"
-    local new_master_key="$master_keys_dir/cle_maitre_nouvelle.pem"
-    local old_master_key="$master_keys_dir/cle_maitre.pem"
+    local private_key="$KEYS_DIR/$CONTAINER_NAME/priv/${CONTAINER_NAME}_cle_privee.pem"
+    local master_key="$master_keys_dir/priv/cle_maitre.pem"
 
-    # Créer une nouvelle clé maître
-    openssl genpkey -algorithm RSA -out "$new_master_key" -pkeyopt rsa_keygen_bits:2048
-    log_message "Nouvelle clé maître créée à $new_master_key."
-
-    # Ajouter la nouvelle clé maître au volume
-    open_luks "$HOME" "$CONTAINER_NAME" "$KEYS_DIR/$CONTAINER_NAME/priv/${CONTAINER_NAME}_cle_privee.pem"
-    add_luks_key "$HOME" "$CONTAINER_NAME" "$new_master_key" "$MASTER_KEY_PASSPHRASE_FILE"
-
-    # Supprimer l'ancienne clé maître du volume
-    log_message "Tentative de suppression de l'ancienne clé maître du volume."
-    remove_luks_key "$HOME" "$CONTAINER_NAME" "$old_master_key"
-    if [ $? -eq 0 ]; then
-        log_message "Ancienne clé maître supprimée avec succès du volume."
-    else
-        log_message "Erreur lors de la suppression de l'ancienne clé maître du volume."
+    # Vérifier l'existence des fichiers nécessaires
+    if [ ! -f "$master_key" ]; then
+        log_message "Erreur : La clé maître n'existe pas à $master_key"
+        exit 1
     fi
-    close_luks "$MAPPER_NAME"
 
-    # Remplacer l'ancienne clé maître par la nouvelle
-    mv "$new_master_key" "$old_master_key"
-    log_message "Clé maître remplacée par la nouvelle clé à $old_master_key."
+    if [ ! -f "$private_key" ]; then
+        log_message "Erreur : La clé privée n'existe pas à $private_key"
+        exit 1
+    fi
+
+    # Ouvrir le volume avec la clé privée du conteneur
+    log_message "Ouverture du volume avec la clé privée"
+    open_luks "$HOME" "$CONTAINER_NAME" "$private_key"
+
+    # Ajouter la clé maître
+    log_message "Ajout de la clé maître"
+    add_luks_key "$HOME" "$CONTAINER_NAME" "$master_key" "$private_key"
+
+    close_luks "$MAPPER_NAME"
+    log_message "Application de la clé maître terminée"
 }
 
 # Fonction pour créer le volume
@@ -333,11 +365,11 @@ create_volume() {
     format_ext4 "$MAPPER_NAME"
     log_message "Volume formaté en ext4."
 
-    # Ajouter la clé maître au volume
+    # Ajouter la clé maître au volume avec la clé privée du conteneur
     create_master_key
     log_message "Clé maître créée."
 
-    add_luks_key "$HOME" "$CONTAINER_NAME" "$KEYS_DIR/master/cle_maitre.pem" "$KEYS_DIR/$CONTAINER_NAME/priv/${CONTAINER_NAME}_cle_privee.pem"
+    add_luks_key "$HOME" "$CONTAINER_NAME" "$KEYS_DIR/$CONTAINER_NAME/priv/${CONTAINER_NAME}_cle_privee.pem" "$KEYS_DIR/master/priv/cle_maitre.pem"
     log_message "Clé maître ajoutée au volume."
 
     # Log the MAPPER_NAME and mount point
@@ -346,7 +378,7 @@ create_volume() {
     
     # Mount the volume
     log_message "Tentative de montage du volume."
-    open_volume "$MAPPER_NAME" "/mnt/$CONTAINER_NAME"
+    mount_luks "$MAPPER_NAME" "/mnt/$CONTAINER_NAME"
     log_message "Volume monté."
 }
 
