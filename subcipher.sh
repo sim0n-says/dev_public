@@ -532,95 +532,106 @@ list_mounted_vaults() {
     done
 }
 
-# Afficher le menu et demander à l'utilisateur de choisir une tâche
-echo "Choisissez une tâche à exécuter :"
-echo "1) Créer un volume"
-echo "-------------------------------------------------------"
-echo "2) Créer une paire de clés"
-echo "3) Créer une clé maître"
-echo "-------------------------------------------------------"
-echo "4) Chiffrer un volume"
-echo "5) Déchiffrer un volume"
-echo "-------------------------------------------------------"
-echo "6) Ouvrir et monter un volume avec clé privée"
-echo "7) Démonter un volume"
-echo "-------------------------------------------------------"
-echo "8) Déchiffrer et monter un volume avec la clé maître"
-echo "9) Ouvrir et monter un volume avec la clé maître"
-echo "10) Appliquer une nouvelle clé maître sur un conteneur"
-echo "-------------------------------------------------------"
-echo "11) Lister les clés LUKS d'un volume"
-echo "12) Lister les volumes montés"
-echo "13) Lister les conteneurs disponibles"
-echo "-------------------------------------------------------"
-echo "14) Démonter tous les volumes"
-echo "15) Fermer tous les mappers"
-echo "16) Quitter"
-read -p "Entrez le numéro de la tâche (1-16) : " TASK_NUMBER
-if ! [[ "$TASK_NUMBER" =~ ^[1-9]$|^1[0-6]$ ]]; then
-    echo "Numéro de tâche invalide."
-    exit 1
-fi
+# Fonction pour afficher le menu
+show_menu() {
+    echo "Choisissez une tâche à exécuter :"
+    echo "1) Créer un volume"
+    echo "-------------------------------------------------------"
+    echo "2) Créer une paire de clés"
+    echo "3) Créer une clé maître"
+    echo "-------------------------------------------------------"
+    echo "4) Chiffrer un volume"
+    echo "5) Déchiffrer un volume"
+    echo "-------------------------------------------------------"
+    echo "6) Ouvrir et monter un volume avec clé privée"
+    echo "7) Démonter un volume"
+    echo "-------------------------------------------------------"
+    echo "8) Déchiffrer et monter un volume avec la clé maître"
+    echo "9) Ouvrir et monter un volume avec la clé maître"
+    echo "10) Appliquer une nouvelle clé maître sur un conteneur"
+    echo "-------------------------------------------------------"
+    echo "11) Lister les clés LUKS d'un volume"
+    echo "12) Lister les volumes montés"
+    echo "13) Lister les conteneurs disponibles"
+    echo "-------------------------------------------------------"
+    echo "14) Démonter tous les volumes"
+    echo "15) Fermer tous les mappers"
+    echo "16) Quitter"
+}
 
-case "$TASK_NUMBER" in
-    1)
-        create_volume
-        ;;
-    2)
-        read -p "Nom du fichier conteneur : " CONTAINER_NAME
-        create_key_pair "$CONTAINER_NAME"
-        ;;
-    3)
-        create_master_key
-        ;;
-    4)
-        read -p "Entrez le chemin du volume à chiffrer : " VOLUME_A_CHIFFRER
-        read -p "Entrez le nom du volume à chiffrer : " NOM_VOLUME
-        encrypt_volume "$VOLUME_A_CHIFFRER" "$NOM_VOLUME"
-        ;;
-    5)
-        read -p "Entrez le chemin du volume à déchiffrer : " VOLUME_A_DECHIFFRER
-        read -p "Entrez le nom du volume chiffré (sans extension .enc) : " NOM_VOLUME_CHIFFRE
-        decrypt_volume "$VOLUME_A_DECHIFFRER" "${NOM_VOLUME_CHIFFRE}.enc"
-        ;;
-    6)
-        open_volume
-        ;;
-    7)
-        unmount_volume
-        ;;
-    8)
-        read -p "Entrez le chemin du volume à déchiffrer : " VOLUME_A_DECHIFFRER
-        read -p "Entrez le nom du volume chiffré (sans extension .enc) : " NOM_VOLUME_CHIFFRE
-        decrypt_master "$VOLUME_A_DECHIFFRER" "${NOM_VOLUME_CHIFFRE}.enc"
-        ;;
-    9)
-        open_master
-        ;;
-    10)
-        apply_new_master
-        ;;
-    11)
-        list_luks_keys
-        ;;
-    12)
-        list_mounted
-        ;;
-    13)
-        list_containers
-        ;;
-    14)
-        unmount_all_volumes
-        ;;
-    15)
-        close_all_mappers
-        ;;
-    16)
-        echo "Quitter."
-        exit 0
-        ;;
-    *)
+# Boucle principale
+while true; do
+    show_menu
+    read -p "Entrez le numéro de la tâche (1-16) : " TASK_NUMBER
+    
+    if ! [[ "$TASK_NUMBER" =~ ^[1-9]$|^1[0-6]$ ]]; then
         echo "Numéro de tâche invalide."
-        exit 1
-        ;;
-esac
+        continue
+    fi
+
+    case "$TASK_NUMBER" in
+        1)
+            create_volume
+            ;;
+        2)
+            read -p "Nom du fichier conteneur : " CONTAINER_NAME
+            create_key_pair "$CONTAINER_NAME"
+            ;;
+        3)
+            create_master_key
+            ;;
+        4)
+            read -p "Entrez le chemin du volume à chiffrer : " VOLUME_A_CHIFFRER
+            read -p "Entrez le nom du volume à chiffrer : " NOM_VOLUME
+            encrypt_volume "$VOLUME_A_CHIFFRER" "$NOM_VOLUME"
+            ;;
+        5)
+            read -p "Entrez le chemin du volume à déchiffrer : " VOLUME_A_DECHIFFRER
+            read -p "Entrez le nom du volume chiffré (sans extension .enc) : " NOM_VOLUME_CHIFFRE
+            decrypt_volume "$VOLUME_A_DECHIFFRER" "${NOM_VOLUME_CHIFFRE}.enc"
+            ;;
+        6)
+            open_volume
+            ;;
+        7)
+            unmount_volume
+            ;;
+        8)
+            read -p "Entrez le chemin du volume à déchiffrer : " VOLUME_A_DECHIFFRER
+            read -p "Entrez le nom du volume chiffré (sans extension .enc) : " NOM_VOLUME_CHIFFRE
+            decrypt_master "$VOLUME_A_DECHIFFRER" "${NOM_VOLUME_CHIFFRE}.enc"
+            ;;
+        9)
+            open_master
+            ;;
+        10)
+            apply_new_master
+            ;;
+        11)
+            list_luks_keys
+            ;;
+        12)
+            list_mounted
+            ;;
+        13)
+            list_containers
+            ;;
+        14)
+            unmount_all_volumes
+            ;;
+        15)
+            close_all_mappers
+            ;;
+        16)
+            echo "Au revoir!"
+            exit 0
+            ;;
+        *)
+            echo "Numéro de tâche invalide."
+            ;;
+    esac
+    
+    echo
+    read -p "Appuyez sur Entrée pour continuer..."
+    clear
+done
