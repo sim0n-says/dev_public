@@ -5,8 +5,6 @@
 # Date: 2025-02-09
 # Description: Script pour gérer des volumes chiffrés avec LUKS en utilisant des clés publiques/privées et une clé Maître.
 
-#WORK IN PROGRESS
-
 # Configuration des options Bash
 set -e
 set -u
@@ -16,7 +14,7 @@ set -o pipefail
 MAPPER_NAME=""
 MOUNT_POINT=""
 KEYS_DIR="$HOME/.secrets"
-LOG_FILE="$HOME/red_october.log"
+LOG_FILE="$HOME/log/subcipher.log"
 CONTAINER_NAME=""
 CONTAINER_PATH=""
 CONTAINER_EXT=".vault"  # Nouvelle variable pour l'extension
@@ -25,6 +23,14 @@ MOUNT_ROOT="/mnt/vault"
 # Fonction pour journaliser les messages
 log_message() {
     local message=$1
+    local log_dir=$(dirname "$LOG_FILE")
+    
+    # Créer le répertoire de logs s'il n'existe pas
+    if [ ! -d "$log_dir" ]; then
+        mkdir -p "$log_dir"
+        chmod 700 "$log_dir"  # Permissions restrictives pour le dossier de logs
+    fi
+    
     echo "$(date '+%Y-%m-%d %H:%M:%S') : $message" | tee -a "$LOG_FILE"
 }
 
